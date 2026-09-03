@@ -1,7 +1,7 @@
 {
   "name": "dsh-message-locator",
-  "version": "0.1.0",
-  "description": "Current-conversation user-message locator for DSH Web",
+  "version": "0.2.0",
+  "description": "Whole-session user-message search and locator for DSH Web",
   "private": true,
   "license": "MIT",
   "type": "module",
@@ -13,8 +13,23 @@
   },
   "dsh": {
     "client": {
+      "inject": [
+        "@deepseek-ai/dsh-api-session-controller",
+        "@deepseek-ai/dsh-client-ui-session"
+      ],
       "platform": "web",
       "immediately": true
+    }
+  },
+  "scripts": {
+    "test": "node --test"
+  },
+  "peerDependencies": {
+    "@deepseek-ai/dsh-session-projection": "*"
+  },
+  "peerDependenciesMeta": {
+    "@deepseek-ai/dsh-session-projection": {
+      "optional": true
     }
   }
 }

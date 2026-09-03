@@ -1,68 +1,78 @@
 # DSH Message Locator
 
-为 [DeepSeek Harness (DSH)](https://github.com/deepseek-ai/deepseek-harness) 提供当前对话中的用户消息定位器。
+为 DeepSeek Harness Web 提供**整场会话**的用户消息搜索与定位。
 
 ## 功能
 
-插件只作用于 DSH Web 当前对话页面：
-
-- 在对话右侧显示用户消息刻度；
-- 点击刻度快速定位到对应的用户消息；
-- 鼠标悬停或聚焦刻度时显示消息预览；
-- 支持搜索当前对话中的用户消息；
-- 支持加载更早的历史消息；
-- 支持键盘操作：
+- Host 端通过 `dshMessageLocator` 会话投影折叠完整持久化日志；
+- 页面首次打开时即可一次展示整场会话中的全部人类用户消息，包括尚未分页载入的历史；
+- 不再通过扫描当前 DOM 收集消息文本；DOM 仅用于判断目标是否已经渲染和执行最终落点；
+- 点击未加载的历史消息时调用 DSH `session.loadThrough(seq)`，自动连续向前分页并定位；
+- 搜索整场会话的用户消息；
+- 同一轮中的普通提问和 steering 用户消息分别建立索引；
+- 图片-only 用户消息也会进入索引并显示为“图片消息”；
+- 鼠标悬停或聚焦刻度时显示消息预览及加载状态；
+- 插件挂载时自动隐藏 DSH 内置的可视 Turn Rail，卸载时自动恢复；只隐藏 UI，不禁用 `session-turn-outline` 投影；
+- 键盘操作：
   - `Ctrl/Cmd+Shift+F`：打开消息定位器；
   - `Enter`：定位到选中的消息；
-  - `ArrowUp` / `ArrowDown`：切换选择；
+  - `ArrowUp` / `ArrowDown`：切换搜索结果；
   - `Alt+ArrowUp` / `Alt+ArrowDown`：上一条/下一条用户消息；
   - `Esc`：关闭面板。
 
-插件不会修改消息内容，也不影响其他网页或 DSH 的其他功能。
+插件不会修改消息内容。
 
-## 目录结构
+## 实现结构
 
 ```text
 lib/
-  index.js   # Host 半，无业务逻辑
-  client.js  # Web Client 半
+  index.js   # Host：注册 dshMessageLocator 整会话投影
+  client.js  # Web Client：读取投影、搜索、自动分页和定位
+test/
+  projection.test.js
 package.json
 README.md
 ```
 
+投影中的每条消息包含：
+
+```js
+{
+  id,        // 稳定消息 id
+  seq,       // user/message 的持久化事件序号；用于 loadThrough
+  turn,      // 当时所在轮次，无法归属时为 null
+  text,      // 归一化后的完整可搜索文本，单条最多 4000 字符
+  hasImages  // 是否包含图片块
+}
+```
+
+只索引 `source.kind === "user"` 的 `user/message`，不会把插件注入上下文或工具结果暴露到定位器。
+
 ## 安装到 DSH Web Profile
 
-### 1. 将插件放入 Profile 依赖
+### 1. 加入 Profile 依赖
 
-在 `~/.dsh/profiles/web/package.json` 的 `dependencies` 中加入：
-
-```json
-"dsh-message-locator": "github:<你的 GitHub 用户名>/<你的仓库名>#subdirectory=dsh-message-locator"
-```
-
-如果插件单独放在一个仓库根目录，则使用：
+编辑 `~/.dsh/profiles/web/package.json`：
 
 ```json
-"dsh-message-locator": "github:<你的 GitHub 用户名>/<你的仓库名>"
+{
+  "dependencies": {
+    "dsh-message-locator": "file:D:/DeepSeek/tpd/dsh-message-locator"
+  }
+}
 ```
 
-也可以使用本地目录：
-
-```json
-"dsh-message-locator": "file:/绝对路径/dsh-message-locator"
-```
+也可以改为 GitHub 或 npm 地址。`@deepseek-ai/dsh-session-projection` 是 DSH Web App 已装配的 Host 能力；常规 DSH Profile 无需额外安装。如果某个自定义 Profile 的依赖隔离无法解析该 peer，可在该 Profile 中显式加入与当前 DSH 版本一致的 `@deepseek-ai/dsh-session-projection`。
 
 ### 2. 安装依赖
-
-在 Profile 目录执行：
 
 ```bash
 pnpm install
 ```
 
-### 3. 加入 Profile composition patch
+### 3. 加入 composition patch
 
-编辑 `~/.dsh/profiles/web/cordis.patch.yml`，加入：
+编辑 `~/.dsh/profiles/web/cordis.patch.yml`：
 
 ```yaml
 - insert:
@@ -70,22 +80,24 @@ pnpm install
       name: dsh-message-locator
 ```
 
-如果已有一个 `insert` 项，把插件条目放入同一个 `insert` 列表即可。
+同一个插件条目同时装配 Host 投影和 Web Client half。
 
 ### 4. 重启 DSH Web
 
-首次安装或更新静态 Web Client 模块后，需要重启 DSH Web/CLI；之后刷新页面即可验证。
+Host 投影代码或静态 Client 模块更新后必须重启当前 DSH Web 进程，再刷新页面。只刷新页面不能装载新的 Host 插件实现。
 
-## 从压缩包安装
+## 长会话行为
 
-解压 `dsh-message-locator.zip`，将解压后的插件目录放到你自己的 GitHub 仓库，然后按上面的 Profile 安装步骤配置。
+- 投影值随会话消息数线性增长，并随 projection baseline/change feed 传到客户端；
+- 每条文本上限为 4000 字符，避免超大单消息无限放大投影；
+- 点击尚未加载的消息时，`loadThrough(seq)` 使用 DSH 内置的连续分页器（当前实现每批最多 200 条 message）；
+- 如果另一个普通“加载更早”请求正在占用分页器，插件会先等待 busy 状态结束再发起定向加载；
+- 最终定位仍需要目标消息进入 Chat DOM，因此被当前视图隐藏或不再渲染的消息会显示“已载入，但目标消息当前不可见”。
 
-## 使用提示
+## 测试
 
-- 定位器只统计当前 DOM 中已加载的用户消息；使用“加载更早”后会自动更新刻度。
-- 当当前页面没有可见对话时，定位器会自动隐藏。
-- 样式使用 DSH 主题 CSS 变量，兼容明暗主题。
+```bash
+npm test
+```
 
-## 开发说明
-
-插件是 Web Client-only 功能，Host 半仅提供空的 `apply()`。客户端通过 DSH 的消息行标记和对话滚动容器工作，并在插件卸载时清理观察器、事件监听器、计时器和 DOM 节点。
+测试覆盖整会话消息收集、同轮多条用户消息、非人类上下文过滤、图片-only 消息、文本长度上限、wire 顺序校验及稳定消息 id 更新。

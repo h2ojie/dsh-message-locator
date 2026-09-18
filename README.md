@@ -29,10 +29,24 @@ lib/
   index.js   # Host：注册 dshMessageLocator 整会话投影
   client.js  # Web Client：读取投影、搜索、自动分页和定位
 test/
-  projection.test.js
+  projection.test.js       # Host 投影折叠语义
+  client-session.test.js   # 当前会话解析 + 已移除字段的回归防护
 package.json
 README.md
 ```
+
+### 当前会话如何解析
+
+`SessionListState` **没有** `current` 字段（DSH 提交 `6830e1460d` 的 “own Client
+Session generations” 重构删除了它）。会话选择现在通过普通引用所有权表达：屏幕上
+的会话就是 `retainedBy.mainView > 0` 的那一行，这与 `ui-session`、`ui-layout`、
+`ui-workspace`、`ui-settings-general` 等内置消费方读取当前会话的方式一致。
+
+读取已删除的 `list.current` 会永远得到 `undefined`，从而让定位器静默失去会话绑定：
+列表与状态栏会一直停留在“正在读取整场会话索引…”。`client-session.test.js` 对此
+设有回归防护。
+
+`core.autocrlf`：仓库中的文本文件以 LF 存储。
 
 投影中的每条消息包含：
 

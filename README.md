@@ -22,6 +22,12 @@
 
 插件不会修改消息内容。
 
+### 浮层必须不透明
+
+面板、预览与侧边按钮统一使用不透明的 `--dsw-alias-bg-layer-3`，而不是 `--dsw-specific-menu`。后者经 `--dsw-menu-surface-fill` 解析为半透明填充（暗色 `rgba(67, 69, 74, 0.45)`、亮色 `rgba(248, 249, 250, 0.58)`），DSH 内置组件只在**同时**设置 `backdrop-filter: var(--dsw-menu-backdrop-filter)` 时使用它。本插件的浮层没有背景模糊，单画 45% 填充会让聊天文字透出、面板发虚难以阅读。`client-surface.test.js` 对此设有回归防护：任何使用半透明菜单 token 的规则都必须同时带 `backdrop-filter`。
+
+`core.autocrlf`：仓库中的文本文件以 LF 存储。编辑 `lib/client.js` 时请保留 UTF-8 无 BOM 编码——文件内含中文选择器（如 `nav[aria-label="轮次导航"]`），用会改写编码的工具（例如 PowerShell 的 `Set-Content`）保存会静默损坏这些字符。
+
 ## 实现结构
 
 ```text
@@ -31,6 +37,7 @@ lib/
 test/
   projection.test.js       # Host 投影折叠语义
   client-session.test.js   # 当前会话解析 + 已移除字段的回归防护
+  client-surface.test.js   # 浮层不透明度与半透明 token 配对防护
 package.json
 README.md
 ```
@@ -71,10 +78,12 @@ Session generations” 重构删除了它）。会话选择现在通过普通引
 ```json
 {
   "dependencies": {
-    "dsh-message-locator": "file:D:/DeepSeek/tpd/dsh-message-locator"
+    "dsh-message-locator": "link:D:/DeepSeek/tpd/dsh-message-locator"
   }
 }
 ```
+
+**本地开发请用 `link:`，不要用 `file:`。** 两者都能装上，但语义不同：`link:` 生成指向源目录的符号链接，改动 `lib/` 后两个 Profile 立即生效；`file:` 会把包**复制**进 `node_modules`，源码改动不会传播，必须重新 `pnpm install` 或手动同步，否则改了代码却看不到任何变化。
 
 也可以改为 GitHub 或 npm 地址。`@deepseek-ai/dsh-session-projection` 是 DSH Web App 已装配的 Host 能力；常规 DSH Profile 无需额外安装。如果某个自定义 Profile 的依赖隔离无法解析该 peer，可在该 Profile 中显式加入与当前 DSH 版本一致的 `@deepseek-ai/dsh-session-projection`。
 
